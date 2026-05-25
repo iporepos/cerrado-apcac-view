@@ -3,3 +3,4 @@ data/*
 .idea/
 .venv/
 dev-instructions.md
+claude-plan.md
