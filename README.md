@@ -257,8 +257,7 @@ Os tiles da Esri requerem acesso à internet. Em redes corporativas com proxy, s
 Verifique se os nomes das colunas em `specs.json → columns` correspondem exatamente aos nomes dos campos no GeoJSON (sensível a maiúsculas).
 
 **Caminhos de arquivo não encontrados**
-Todos os caminhos relativos em `specs.json` são resolvidos a partir da pasta onde `mapview.py` está localizado — não do diretório de trabalho do terminal. Confirme que a estrutura `data/` está na mesma pasta que `mapview.py`.
-
+Todos os caminhos relativos em `specs.json` são resolvidos a partir da pasta onde `mapview.py` está localizado — não do diretório de trabalho do terminal.
 ---
 
 ## Deploy
