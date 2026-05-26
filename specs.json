@@ -1,24 +1,24 @@
 {
   "title_page": "APCAC - Cerrado",
   "page_icon": "🌳",
+
   "title_intro": "Áreas Prioritárias para Conservação de Águas do Cerrado",
-
+  "desc_intro": "Onde concentrar os esforços de conservação de água no maior bioma savânico do Brasil? Este painel apresenta os resultados da classificação APCAC — um framework de planejamento territorial que identifica sub-bacias prioritárias para conservação, restauração e gestão de risco hídrico no Cerrado. Os resultados são apresentados na escala do **Nível Otto 5** do sistema BHO (Bacias Hidrográficas Ottocodificadas da ANA), compatível com o planejamento regional e a gestão de recursos hídricos por comitê de bacia.",
   "title_map": "Mapa de Classes APCAC",
-
+  "desc_map": "As sub-bacias exibidas correspondem ao **Nível Otto 5** do sistema BHO — uma escala intermediária que equilibra detalhe hidrológico e aplicabilidade ao planejamento territorial. Clique sobre qualquer polígono para consultar os atributos da bacia. Use o controle de camadas no canto superior direito do mapa para alternar entre bases cartográficas.",
   "title_stats": "Estatísticas por Classe",
+  "desc_stats": "Distribuição das classes APCAC no bioma Cerrado por área e participação percentual. As classes refletem a combinação entre importância hidrológica, grau de conservação e risco de degradação — cada uma projetada para orientar um instrumento específico de conservação ou gestão.",
 
   "title_info": "Informações do Projeto",
+  "info":     "info.md",
+  
+  "image":    "https://images.possantti.net/story/A030/results_pt.jpeg",
+  "image_height": 400,
+  "image_caption": "Figura 1 — Classificação APCAC no Bioma Cerrado",
 
-  "desc_intro": "As APCAC identificam bacias hidrográficas prioritárias Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
-  "desc_map": "Mapa de APCAC calculada na escala de bacias hidrográficas Nível Otto 5. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
-  "desc_stats": "Área ocupada por cada classe no bioma Cerrado. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
-
-  "info":     "data/info.md",
-  "image":    "https://images.possantti.net/story/A030/results_en.jpeg",
-
-  "stats":    "data/apcac.csv",
-  "map_main": "data/univotto5_v2.geojson",
-  "map_roi":  "data/map_roi.geojson",
+  "stats":    "stats.csv",
+  "map_main": "https://data.possantti.net/A030/map_main.geojson",
+  "map_roi":  "https://data.possantti.net/A030/map_roi.geojson",
 
   "basemaps": [
     {
@@ -68,67 +68,67 @@
   "style_classes": {
     "IAR": {
       "color": "85,0,0,255",
-      "name": "Bacia natural, importância hidrológica extremamente alta, alto risco"
+      "name": "Bacia natural | prioridade hidrológica extremamente alta | risco de desmatamento"
     },
     "IBR": {
       "color": "128,0,0,255",
-      "name": "Bacia natural, importância hidrológica muito alta, alto risco"
+      "name": "Bacia natural | prioridade hidrológica muito alta | risco de desmatamento"
     },
     "ICR": {
       "color": "212,0,0,255",
-      "name": "Bacia natural, importância hidrológica alta, alto risco"
+      "name": "Bacia natural | prioridade hidrológica alta | risco de desmatamento"
     },
     "IA": {
       "color": "28,73,66,255",
-      "name": "Bacia natural, importância hidrológica extremamente alta"
+      "name": "Bacia natural | prioridade hidrológica extremamente alta"
     },
     "IB": {
       "color": "36,130,72,255",
-      "name": "Bacia natural, importância hidrológica muito alta"
+      "name": "Bacia natural | prioridade hidrológica muito alta"
     },
     "IC": {
       "color": "81,162,76,255",
-      "name": "Bacia natural, importância hidrológica alta"
+      "name": "Bacia natural | prioridade hidrológica alta"
     },
     "IIAR": {
       "color": "57,31,112,255",
-      "name": "Bacia antropizada, importância hidrológica extremamente alta, alto risco"
+      "name": "Bacia antropizada | prioridade hidrológica extremamente alta | risco de degradação"
     },
     "IIBR": {
       "color": "73,31,112,255",
-      "name": "Bacia antropizada, importância hidrológica muito alta, alto risco"
+      "name": "Bacia antropizada | prioridade hidrológica muito alta | risco de degradação"
     },
     "IICR": {
       "color": "108,46,167,255",
-      "name": "Bacia antropizada, importância hidrológica alta, alto risco"
+      "name": "Bacia antropizada | prioridade hidrológica alta | risco de degradação"
     },
     "IIA": {
       "color": "31,58,112,255",
-      "name": "Bacia antropizada, importância hidrológica extremamente alta"
+      "name": "Bacia antropizada | prioridade hidrológica extremamente alta"
     },
     "IIB": {
       "color": "55,110,160,255",
-      "name": "Bacia antropizada, importância hidrológica muito alta"
+      "name": "Bacia antropizada | prioridade hidrológica muito alta"
     },
     "IIC": {
       "color": "69,142,160,255",
-      "name": "Bacia antropizada, importância hidrológica alta"
+      "name": "Bacia antropizada | prioridade hidrológica alta"
     },
     "IIAC": {
       "color": "255,148,0,255",
-      "name": "Bacia antropizada, importância hidrológica extremamente alta, risco de déficit hídrico"
+      "name": "Bacia antropizada | prioridade hidrológica extremamente alta | risco de déficit hídrico"
     },
     "IIBC": {
       "color": "255,167,0,255",
-      "name": "Bacia antropizada, importância hidrológica muito alta, risco de déficit hídrico"
+      "name": "Bacia antropizada | prioridade hidrológica muito alta | risco de déficit hídrico"
     },
     "IICC": {
       "color": "255,186,0,255",
-      "name": "Bacia antropizada, importância hidrológica alta, risco de déficit hídrico"
+      "name": "Bacia antropizada | prioridade hidrológica alta | risco de déficit hídrico"
     },
     "XC": {
       "color": "255,221,129,255",
-      "name": "Bacia com importância hidrológica regular e risco de déficit hídrico"
+      "name": "Bacia com prioridade hidrológica regular | risco de déficit hídrico"
     }
   },
 

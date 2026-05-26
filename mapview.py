@@ -114,9 +114,10 @@ def load_asset_image(path_or_url: str) -> bytes | str | None:
         return None
 
 
-def render_image_with_fallback(path_or_url: str, caption: str = ""):
+def render_image_with_fallback(path_or_url: str, caption: str | None = None, height: int | None = None):
     """
     Renders an image from a local path or URL.
+    If height is set, renders via HTML <img> tag with fixed height and auto width.
     Shows an info message if the asset cannot be loaded.
     """
     if not path_or_url:
@@ -125,8 +126,22 @@ def render_image_with_fallback(path_or_url: str, caption: str = ""):
     asset = load_asset_image(path_or_url)
     if asset is None:
         st.info(f"⚠️ Imagem não encontrada: `{path_or_url}`")
+    elif height:
+        # Fixed height with auto width — st.image doesn't support this natively
+        if isinstance(asset, bytes):
+            import base64
+            b64 = base64.b64encode(asset).decode()
+            src = f"data:image/png;base64,{b64}"
+        else:
+            src = asset  # URL string
+        st.markdown(
+            f'<div style="text-align:center"><img src="{src}" style="height:{height}px;width:auto;max-width:100%" alt="{caption}"></div>',
+            unsafe_allow_html=True,
+        )
+        if caption:
+            st.markdown(f'<div style="text-align:center">{caption}</div>', unsafe_allow_html=True)
     else:
-        st.image(asset, caption=caption, use_container_width=True)
+        st.image(asset, caption=caption or "", use_container_width=True)
 
 # ── Style helpers ──────────────────────────────────────────────────────────────
 
@@ -174,6 +189,9 @@ def get_feature_color(style_lookup: dict, class_value: str) -> str:
 def load_geodata(path_or_url: str | None, simplify_tolerance: float) -> gpd.GeoDataFrame | None:
     """
     Reads a GeoJSON from a local path or URL into a GeoDataFrame.
+    For URLs, downloads via requests first to handle storage backends
+    (e.g. Cloudflare R2) that serve files as attachments rather than
+    inline streams — which gpd.read_file() cannot handle directly.
     Reprojects to EPSG:4326 if needed.
     Applies geometry simplification (preserve_topology=True).
     Returns None on any failure — never raises.
@@ -181,7 +199,13 @@ def load_geodata(path_or_url: str | None, simplify_tolerance: float) -> gpd.GeoD
     if not path_or_url:
         return None
     try:
-        gdf = gpd.read_file(_resolve(path_or_url))
+        if _is_url(path_or_url):
+            from io import BytesIO
+            resp = requests.get(path_or_url, timeout=60)
+            resp.raise_for_status()
+            gdf = gpd.read_file(BytesIO(resp.content))
+        else:
+            gdf = gpd.read_file(_resolve(path_or_url))
         if gdf is None or gdf.empty:
             return None
         if gdf.crs and gdf.crs.to_epsg() != 4326:
@@ -415,7 +439,7 @@ def render_intro(specs: dict):
     if desc:
         st.markdown(desc)
     image_path = specs.get("image", "")
-    render_image_with_fallback(image_path, caption=specs.get("title_intro", ""))
+    render_image_with_fallback(image_path, caption=specs.get("image_caption") or None, height=specs.get("image_height") or None)
 
 
 # Warn the user when the serialised GeoJSON exceeds this threshold (MB).
