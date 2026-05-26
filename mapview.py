@@ -8,6 +8,7 @@ with zero changes to this module.
 """
 
 import json
+import tempfile
 import requests
 import streamlit as st
 import folium
@@ -408,8 +409,11 @@ def render_sidebar(specs: dict):
 
 
 def render_intro(specs: dict):
-    """Renders the intro section: title + legend image."""
+    """Renders the intro section: title + optional description + legend image."""
     st.markdown(f"## {specs['title_intro']}")
+    desc = specs.get("desc_intro")
+    if desc:
+        st.markdown(desc)
     image_path = specs.get("image", "")
     render_image_with_fallback(image_path, caption=specs.get("title_intro", ""))
 
@@ -421,6 +425,9 @@ _GEOJSON_WARN_MB = 20
 def render_map(specs: dict, style_lookup: dict):
     """Renders the map section. Always shows a map; shows info if main layer unavailable."""
     st.markdown(f"## {specs['title_map']}")
+    desc = specs.get("desc_map")
+    if desc:
+        st.markdown(desc)
 
     map_opts = specs.get("map_options", {})
     tolerance = map_opts.get("simplify_tolerance", 0.01)
@@ -466,6 +473,9 @@ def render_map(specs: dict, style_lookup: dict):
 def render_statistics(specs: dict, style_lookup: dict):
     """Renders the statistics section: one horizontal bar chart tab per stats_charts entry."""
     st.markdown(f"## {specs['title_stats']}")
+    desc = specs.get("desc_stats")
+    if desc:
+        st.markdown(desc)
 
     stats_path = specs.get("stats")
     df = load_statistics(stats_path)

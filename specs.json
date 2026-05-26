@@ -1,15 +1,23 @@
 {
-  "title_page":  "APCAC - Cerrado",
-  "page_icon":   "🌳",
+  "title_page": "APCAC - Cerrado",
+  "page_icon": "🌳",
   "title_intro": "Áreas Prioritárias para Conservação de Águas do Cerrado",
-  "title_map":   "Mapa de Classes APCAC",
+
+  "title_map": "Mapa de Classes APCAC",
+
   "title_stats": "Estatísticas por Classe",
-  "title_info":  "Informações do Projeto",
+
+  "title_info": "Informações do Projeto",
+
+  "desc_intro": "As APCAC identificam bacias hidrográficas prioritárias Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+  "desc_map": "Mapa de APCAC calculada na escala de bacias hidrográficas Nível Otto 5. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+  "desc_stats": "Área ocupada por cada classe no bioma Cerrado. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
 
   "info":     "data/info.md",
   "image":    "https://images.possantti.net/story/A030/results_en.jpeg",
+
   "stats":    "data/apcac.csv",
-  "map_main": "data/map_main.geojson",
+  "map_main": "data/univotto5_v2.geojson",
   "map_roi":  "data/map_roi.geojson",
 
   "basemaps": [
@@ -32,12 +40,13 @@
 
   "columns": {
     "cd_apcac":   "Classe APCAC",
-    "cobacia":    "Código ANA da bacia",
+    "nunivotto5":    "Código ANA (Nível Otto 5)",
     "nuareacont": "Área de drenagem (km²)",
-    "cd_apcac_a": "Prioridade Hidrológica",
-    "n": "Conservação Natural (%)",
-    "v": "Taxa de Desmatamento (%/ano)",
-    "slope": "Declividade média (%)"
+    "cd_apcac_a": "Prioridade hidrológica",
+    "n":    "Conservação natural (%)",
+    "v": "Taxa de desmatamento (% /ano)",
+    "slope": "Declividade média (%)",
+    "uslek": "Erodibilidade do solo (USLE)"
   },
 
   "classes": "cd_apcac",

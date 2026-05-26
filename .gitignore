@@ -5,3 +5,4 @@ data/*
 dev-instructions.md
 claude-plan.md
 mapview_testing.py
+/.streamlit/
