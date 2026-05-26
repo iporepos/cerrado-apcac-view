@@ -13,6 +13,7 @@ mesmo sob precipitação idêntica — um argumento empírico direto para
 a vegetação nativa como infraestrutura hídrica.
 
 ![Créditos Luiz Flamarion](https://photos.possantti.net/cerrado/luiz-flamarion.jpg)
+*A paisagem do Cerrado: vereda em primeiro plano com platôs elevados ao fundo. © Luiz Flamarion*
 
 ## O Estudo
 

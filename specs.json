@@ -13,8 +13,8 @@
   "info":     "info.md",
   
   "image":    "https://images.possantti.net/story/A030/results_pt.jpeg",
-  "image_height": 400,
-  "image_caption": "Figura 1 — Classificação APCAC no Bioma Cerrado",
+  "image_height": 700,
+  "image_caption": "Classificação de Áreas Prioritárias de Conservação de Água no Bioma Cerrado",
 
   "stats":    "stats.csv",
   "map_main": "https://data.possantti.net/A030/map_main.geojson",

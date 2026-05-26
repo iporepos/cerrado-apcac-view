@@ -4,6 +4,23 @@ Painel interativo em Streamlit que apresenta as **Áreas Prioritárias para Cons
 
 ---
 
+## Demonstração
+ 
+**Visão geral** — painel completo com barra lateral, imagem de introdução e mapa interativo.
+ 
+![Visão geral do painel](docs/screenshot_overview.png)
+ 
+**Consulta por clique** — ao clicar em qualquer sub-bacia, um popup exibe o nome da classe e os atributos configurados em `specs.json`.
+ 
+![Popup de consulta](docs/screenshot_map.png)
+ 
+**Estatísticas** — distribuição das classes APCAC por área e participação percentual no bioma, em gráficos de barras interativos.
+ 
+![Estatísticas por classe](docs/screenshot_stats.png)
+
+
+---
+
 ## Estrutura do Repositório
 
 ```
@@ -178,6 +195,24 @@ Camada de contorno da Região de Interesse — renderizada apenas com borda, sem
   "name":   "Região de Interesse (Bioma Cerrado)"
 }
 ```
+
+### Imagem de introdução
+
+A imagem exibida na seção de introdução do painel é configurada por três chaves em `specs.json`:
+
+```json
+"image":         "https://exemplo.com/imagem.jpg",
+"image_height":  400,
+"image_caption": null
+```
+
+- `image`: caminho local ou URL pública da imagem. Formatos suportados: PNG, JPG, JPEG, GIF, WebP.
+- `image_height`: altura fixa em pixels, com largura proporcional automática. Defina `null` para ocupar a largura total do painel.
+- `image_caption`: legenda exibida centralizada abaixo da imagem. Defina `null` para omitir.
+
+Se a imagem não for encontrada (arquivo ausente ou URL inacessível), o painel exibe uma mensagem de aviso no lugar da imagem e continua funcionando normalmente.
+
+> **Para substituir a imagem:** basta apontar `"image"` para o novo arquivo ou URL e ajustar `"image_height"` conforme necessário. Nenhuma alteração no código é necessária.
 
 ### Opções do mapa
 
