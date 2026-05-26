@@ -1,2 +1,9 @@
 data/*
 *.pdf
+.idea/
+.venv/
+dev-instructions.md
+claude-plan.md
+mapview_testing.py
+/.streamlit/
+/_data/

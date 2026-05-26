@@ -1,449 +1,597 @@
 # -*- coding: utf-8 -*-
+"""
+mapview.py — Generic config-driven geospatial dashboard.
+
+All project-specific values live in specs.json.
+Swap the JSON and data files to deploy a completely different project
+with zero changes to this module.
+"""
+
+import json
+import tempfile
+import requests
 import streamlit as st
 import folium
-from streamlit_folium import st_folium
 import geopandas as gpd
-import sqlite3
 import pandas as pd
 import plotly.express as px
-from xml.etree import ElementTree as ET
+from pathlib import Path
 
-# Configuração da página
-st.set_page_config(
-    page_title="APCAC - Cerrado",
-    page_icon="🌳",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# ── Root directory — always the folder containing mapview.py ──────────────────
+# Anchors all relative paths in specs.json to the script location,
+# so `streamlit run` works from any working directory.
+ROOT_DIR = Path(__file__).parent.resolve()
 
-# Título principal
-st.title("🌳 Áreas Prioritárias para Conservação de Águas do Cerrado")
-st.markdown("---")
+def _resolve(path_or_url: str) -> str:
+    """Returns URLs unchanged; resolves everything else relative to ROOT_DIR."""
+    if not path_or_url or path_or_url.startswith(("http://", "https://")):
+        return path_or_url
+    return str(ROOT_DIR / path_or_url)
 
-@st.cache_data
-def get_available_layers():
-    """Lista as camadas APCAC disponíveis"""
-    try:
-        gpkg_path = "data/apcac/apcac.gpkg"
-        conn = sqlite3.connect(gpkg_path)
-        cursor = conn.cursor()
+# ── Constants ─────────────────────────────────────────────────────────────────
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'apcac_%' AND name NOT LIKE '%_bho5k';")
-        apcac_tables = [table[0] for table in cursor.fetchall()]
-        conn.close()
+SPECS_PATH = str(ROOT_DIR / "specs.json")
+FALLBACK_COLOR = "#808080"
+FALLBACK_CENTER = [-15.0, -50.0]
+FALLBACK_ZOOM = 4
 
-        return apcac_tables
-    except Exception as e:
-        st.error(f"Erro ao listar camadas: {str(e)}")
-        return []
+REQUIRED_KEYS = [
+    "title_page", "page_icon", "title_intro", "title_map",
+    "title_stats", "title_info", "map_main", "classes",
+    "style_classes", "basemaps", "columns", "stats_charts",
+]
+
+# ── Config loading ─────────────────────────────────────────────────────────────
 
 @st.cache_data
-def load_apcac_statistics():
-    """Carrega as estatísticas pré-computadas do arquivo CSV"""
+def load_specs(path: str = SPECS_PATH) -> dict:
+    """
+    Loads and validates specs.json.
+    Halts the app with st.error + st.stop() on any fatal problem.
+    """
     try:
-        csv_path = "data/apcac/apcac.csv"
-        df = pd.read_csv(csv_path, sep=';')
-        return df
-    except Exception as e:
-        st.error(f"Erro ao carregar estatísticas: {str(e)}")
-        return None
+        with open(path, "r", encoding="utf-8") as f:
+            specs = json.load(f)
+    except FileNotFoundError:
+        st.error(f"❌ Arquivo de configuração não encontrado: `{path}`")
+        st.stop()
+    except json.JSONDecodeError as exc:
+        st.error(f"❌ Erro ao interpretar `{path}`: {exc}")
+        st.stop()
 
-@st.cache_data
-def parse_qml_style():
-    """Extrai as configurações de estilo do arquivo QML"""
-    try:
-        qml_path = "data/apcac/apcac.qml"
-        tree = ET.parse(qml_path)
-        root = tree.getroot()
-
-        style_map = {}
-
-        # Extrair regras e cores do QML
-        rules = root.findall(".//rule")
-        symbols = root.findall(".//symbol")
-
-        for rule in rules:
-            filter_attr = rule.get('filter', '')
-            label = rule.get('label', '')
-            symbol_name = rule.get('symbol', '')
-
-            # Extrair código APCAC do filtro
-            if 'cd_apcac' in filter_attr:
-                code = filter_attr.split("'")[1] if "'" in filter_attr else ''
-                if code:
-                    style_map[code] = {
-                        'label': label,
-                        'symbol': symbol_name
-                    }
-
-        # Extrair cores dos símbolos
-        color_map = {}
-        for symbol in symbols:
-            symbol_name = symbol.get('name', '')
-            color_elem = symbol.find(".//Option[@name='color']")
-            if color_elem is not None:
-                color_value = color_elem.get('value', '')
-                if color_value:
-                    # Converter de formato QGIS (R,G,B,A) para hex
-                    try:
-                        rgba = [int(x) for x in color_value.split(',')]
-                        hex_color = f"#{rgba[0]:02x}{rgba[1]:02x}{rgba[2]:02x}"
-                        color_map[symbol_name] = hex_color
-                    except:
-                        color_map[symbol_name] = '#808080'  # Cor padrão
-
-        # Combinar estilos e cores
-        for code in style_map:
-            symbol_num = style_map[code]['symbol']
-            if symbol_num in color_map:
-                style_map[code]['color'] = color_map[symbol_num]
-            else:
-                style_map[code]['color'] = '#808080'
-
-        return style_map
-
-    except Exception as e:
-        st.error(f"Erro ao carregar estilos QML: {str(e)}")
-        return {}
-
-@st.cache_data
-def load_specific_layer(layer_name):
-    """Carrega uma camada específica do GPKG"""
-    try:
-        gpkg_path = "data/apcac/apcac.gpkg"
-        gdf = gpd.read_file(gpkg_path, layer=layer_name)
-        return gdf
-    except Exception as e:
-        st.error(f"Erro ao carregar camada {layer_name}: {str(e)}")
-        return None
-
-def simplify_geodataframe(gdf, tolerance=0.001):
-    """Simplifica as geometrias do GeoDataFrame para melhor performance"""
-    if gdf is not None and not gdf.empty:
-        # Simplificar geometrias com tolerância baixa (mais detalhada)
-        gdf_simplified = gdf.copy()
-        gdf_simplified['geometry'] = gdf_simplified['geometry'].simplify(tolerance=tolerance, preserve_topology=True)
-        return gdf_simplified
-    return gdf
-
-def create_folium_map(gdf_simplified, style_map):
-    """Cria o mapa Folium com os dados APCAC otimizado para performance"""
-
-    # Calcular centro do mapa baseado nos dados
-    bounds = gdf_simplified.total_bounds
-    center_lat = (bounds[1] + bounds[3]) / 2
-    center_lon = (bounds[0] + bounds[2]) / 2
-
-    # Criar mapa base
-    m = folium.Map(
-        location=[center_lat, center_lon],
-        # zoom_start=7,
-        tiles=None,
-        prefer_canvas=True  # Melhor performance para muitos elementos
-    )
-
-    # Adicionar camadas base
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri National Geographic',
-        name='National Geographic',
-        overlay=False,
-        control=True
-    ).add_to(m)
-
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri Standard',
-        name='Street Map',
-        overlay=False,
-        control=True
-    ).add_to(m)
-
-    # Adicionar dados APCAC se disponíveis
-    apcac_col = 'cd_apcac'
-
-    # Criar função de estilo otimizada
-    def style_function(feature):
-        apcac_code = feature['properties'].get(apcac_col, '')
-        color = style_map[apcac_code]['color']
-
-        return {
-            'fillColor': color,
-            'color': '#333333',
-            'weight': 0.3,  # Linha mais fina para melhor performance
-            'fillOpacity': 0.6,
-            'opacity': 0.8
-        }
-    
-    # Limitar campos no tooltip para melhor performance
-    tooltip_fields = [apcac_col, 'nuareacont', 't', 'slope']
-    tooltip_aliases = ['APCAC:', 'Área (km²)', 'Elevação média (m)', 'Declividade média (%)']
-
-    # Adicionar camada APCAC com configurações otimizadas
-    geojson_layer = folium.GeoJson(
-        gdf_simplified.to_json(),
-        style_function=style_function,
-        tooltip=folium.GeoJsonTooltip(
-            fields=[apcac_col],
-            aliases=['APCAC: '],
-            sticky=False,
-            labels=True
-        ),
-        popup=folium.GeoJsonPopup(
-            fields=tooltip_fields,
-            aliases=tooltip_aliases
-        ),
-        name='APCAC',
-        smooth_factor=1.0
+    missing = [k for k in REQUIRED_KEYS if k not in specs]
+    if missing:
+        st.error(
+            f"❌ Chaves obrigatórias ausentes em `{path}`: "
+            + ", ".join(f"`{k}`" for k in missing)
         )
+        st.stop()
 
-    geojson_layer.add_to(m)
+    return specs
 
-    # Ajustar zoom para mostrar todos os dados
-    if hasattr(gdf_simplified, 'total_bounds'):
-        bounds = gdf_simplified.total_bounds
-        m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+# ── Asset helpers ──────────────────────────────────────────────────────────────
 
-    # Adicionar controle de camadas
-    folium.LayerControl().add_to(m)
+def _is_url(path_or_url: str) -> bool:
+    """Returns True for http:// or https:// strings."""
+    return path_or_url.startswith("http://") or path_or_url.startswith("https://")
 
-    return m
 
-def create_legend(style_map):
-    """Cria uma legenda para os códigos APCAC"""
+def load_asset_text(path_or_url: str) -> str | None:
+    """
+    Returns text content from a local file or remote URL.
+    Returns None on any failure — never raises.
+    """
+    if not path_or_url:
+        return None
+    try:
+        if _is_url(path_or_url):
+            resp = requests.get(path_or_url, timeout=10)
+            resp.raise_for_status()
+            return resp.text
+        with open(_resolve(path_or_url), "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return None
 
-    st.sidebar.markdown("### 📊 Legenda APCAC")
 
-    if style_map:
-        # Organizar por categorias
-        categories = {
-            'Natural - Alto Risco': [],
-            'Natural - Baixo Risco': [],
-            'Antrópica - Alto Risco': [],
-            'Antrópica - Baixo Risco': []
-        }
+def load_asset_image(path_or_url: str) -> bytes | str | None:
+    """
+    Local path → raw bytes.
+    Remote URL → URL string (st.image handles URLs natively).
+    Returns None on any failure — never raises.
+    """
+    if not path_or_url:
+        return None
+    try:
+        if _is_url(path_or_url):
+            # Verify the URL is reachable; return the string for st.image
+            resp = requests.head(path_or_url, timeout=10, allow_redirects=True)
+            resp.raise_for_status()
+            return path_or_url
+        with open(_resolve(path_or_url), "rb") as f:
+            return f.read()
+    except Exception:
+        return None
 
-        for code, info in style_map.items():
-            label = info['label']
-            color = info['color']
 
-            if 'Predominância natural' in label and 'alto risco' in label:
-                categories['Natural - Alto Risco'].append((code, label, color))
-            elif 'Predominância natural' in label:
-                categories['Natural - Baixo Risco'].append((code, label, color))
-            elif 'Predominância antrópica' in label and 'alto risco' in label:
-                categories['Antrópica - Alto Risco'].append((code, label, color))
-            elif 'Predominância antrópica' in label:
-                categories['Antrópica - Baixo Risco'].append((code, label, color))
-
-        for category, items in categories.items():
-            if items:
-                st.sidebar.markdown(f"**{category}:**")
-                for code, label, color in items:
-                    # Criar uma pequena caixa colorida
-                    st.sidebar.markdown(
-                        f'<div style="display: flex; align-items: center; margin: 2px 0;">'
-                        f'<div style="width: 15px; height: 15px; background-color: {color}; '
-                        f'border: 1px solid #000; margin-right: 8px;"></div>'
-                        f'<span style="font-size: 11px;"><b>{code}</b>: {label.split(" - ")[1] if " - " in label else label}</span>'
-                        f'</div>',
-                        unsafe_allow_html=True
-                    )
-                st.sidebar.markdown("")
-    else:
-        st.sidebar.markdown("Legenda não disponível")
-
-def create_statistics_charts(df_stats, style_map):
-    """Cria gráficos de barras com as estatísticas APCAC"""
-
-    if df_stats is None or df_stats.empty:
-        st.warning("Dados de estatísticas não disponíveis")
+def render_image_with_fallback(path_or_url: str, caption: str | None = None, height: int | None = None):
+    """
+    Renders an image from a local path or URL.
+    If height is set, renders via HTML <img> tag with fixed height and auto width.
+    Shows an info message if the asset cannot be loaded.
+    """
+    if not path_or_url:
+        st.info("ℹ️ Nenhuma imagem configurada.")
         return
-
-    # Preparar dados para gráfico
-    df_chart = df_stats.copy()
-
-    # Adicionar cores baseadas no style_map
-    colors = []
-    for code in df_chart['cd_apcac']:
-        if code in style_map:
-            colors.append(style_map[code]['color'])
+    asset = load_asset_image(path_or_url)
+    if asset is None:
+        st.info(f"⚠️ Imagem não encontrada: `{path_or_url}`")
+    elif height:
+        # Fixed height with auto width — st.image doesn't support this natively
+        if isinstance(asset, bytes):
+            import base64
+            b64 = base64.b64encode(asset).decode()
+            src = f"data:image/png;base64,{b64}"
         else:
-            colors.append('#808080')
+            src = asset  # URL string
+        st.markdown(
+            f'<div style="text-align:center"><img src="{src}" style="height:{height}px;width:auto;max-width:100%" alt="{caption}"></div>',
+            unsafe_allow_html=True,
+        )
+        if caption:
+            st.markdown(f'<div style="text-align:center">{caption}</div>', unsafe_allow_html=True)
+    else:
+        st.image(asset, caption=caption or "", use_container_width=True)
 
-    df_chart['color'] = colors
+# ── Style helpers ──────────────────────────────────────────────────────────────
 
-    # Criar tabs para diferentes visualizações
-    tab1, tab2, tab3, tab4 = st.tabs(["Área Bioma", "% Bioma", "Área ZHI", "% ZHI"])
+def rgba_to_hex(rgba_str: str) -> str:
+    """
+    Converts "R,G,B,A" (0–255 each) → "#rrggbb".
+    Alpha channel is discarded.
+    Returns FALLBACK_COLOR on any parse failure — never raises.
+    """
+    try:
+        parts = [int(x.strip()) for x in rgba_str.split(",")]
+        r, g, b = parts[0], parts[1], parts[2]
+        return f"#{r:02x}{g:02x}{b:02x}"
+    except Exception:
+        return FALLBACK_COLOR
 
-    with tab1:
-        st.markdown("**Área no Bioma Cerrado (km²)**")
-        fig1 = px.bar(
-            df_chart,
-            x='cd_apcac',
-            y='bio_area_km2',
-            color='cd_apcac',
-            color_discrete_map={row['cd_apcac']: row['color'] for _, row in df_chart.iterrows()},
-            title="Área das Classes APCAC no Bioma Cerrado"
-        )
-        fig1.update_layout(
-            showlegend=False,
-            xaxis_title="Classe APCAC",
-            yaxis_title="Área (km²)",
-            height=400,
-            xaxis={'categoryorder': 'total descending'}
-        )
-        st.plotly_chart(fig1, use_container_width=True)
 
-    with tab2:
-        st.markdown("**Porcentagem no Bioma Cerrado (%)**")
-        fig2 = px.bar(
-            df_chart,
-            x='cd_apcac',
-            y='bio_area_km2_p',
-            color='cd_apcac',
-            color_discrete_map={row['cd_apcac']: row['color'] for _, row in df_chart.iterrows()},
-            title="Porcentagem das Classes APCAC no Bioma Cerrado"
-        )
-        fig2.update_layout(
-            showlegend=False,
-            xaxis_title="Classe APCAC",
-            yaxis_title="Porcentagem (%)",
-            height=400,
-            xaxis={'categoryorder': 'total descending'}
-        )
-        st.plotly_chart(fig2, use_container_width=True)
+@st.cache_data
+def build_style_lookup(style_classes_json: str) -> dict:
+    """
+    Accepts json.dumps(specs["style_classes"]) for hashability.
+    Returns { class_code: { "color": "#hex", "name": "..." }, ... }
+    with all RGBA values pre-converted to hex.
+    """
+    raw = json.loads(style_classes_json)
+    return {
+        code: {
+            "color": rgba_to_hex(info.get("color", "")),
+            "name": info.get("name", code),
+        }
+        for code, info in raw.items()
+    }
 
-    with tab3:
-        st.markdown("**Área na Zona de Influência Hidrológica (km²)**")
-        fig3 = px.bar(
-            df_chart,
-            x='cd_apcac',
-            y='zhi_area_km2',
-            color='cd_apcac',
-            color_discrete_map={row['cd_apcac']: row['color'] for _, row in df_chart.iterrows()},
-            title="Área das Classes APCAC na Zona de Influência Hidrológica"
-        )
-        fig3.update_layout(
-            showlegend=False,
-            xaxis_title="Classe APCAC",
-            yaxis_title="Área (km²)",
-            height=400,
-            xaxis={'categoryorder': 'total descending'}
-        )
-        st.plotly_chart(fig3, use_container_width=True)
 
-    with tab4:
-        st.markdown("**Porcentagem na Zona de Influência Hidrológica (%)**")
-        fig4 = px.bar(
-            df_chart,
-            x='cd_apcac',
-            y='zhi_area_km2_p',
-            color='cd_apcac',
-            color_discrete_map={row['cd_apcac']: row['color'] for _, row in df_chart.iterrows()},
-            title="Porcentagem das Classes APCAC na Zona de Influência Hidrológica"
+def get_feature_color(style_lookup: dict, class_value: str) -> str:
+    """
+    Returns the hex color for a class value.
+    Falls back to FALLBACK_COLOR for any unknown or missing value.
+    """
+    return style_lookup.get(str(class_value), {}).get("color", FALLBACK_COLOR)
+
+# ── Data loading ───────────────────────────────────────────────────────────────
+
+@st.cache_data
+def load_geodata(path_or_url: str | None, simplify_tolerance: float) -> gpd.GeoDataFrame | None:
+    """
+    Reads a GeoJSON from a local path or URL into a GeoDataFrame.
+    For URLs, downloads via requests first to handle storage backends
+    (e.g. Cloudflare R2) that serve files as attachments rather than
+    inline streams — which gpd.read_file() cannot handle directly.
+    Reprojects to EPSG:4326 if needed.
+    Applies geometry simplification (preserve_topology=True).
+    Returns None on any failure — never raises.
+    """
+    if not path_or_url:
+        return None
+    try:
+        if _is_url(path_or_url):
+            from io import BytesIO
+            resp = requests.get(path_or_url, timeout=60)
+            resp.raise_for_status()
+            gdf = gpd.read_file(BytesIO(resp.content))
+        else:
+            gdf = gpd.read_file(_resolve(path_or_url))
+        if gdf is None or gdf.empty:
+            return None
+        if gdf.crs and gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+        gdf["geometry"] = gdf["geometry"].simplify(
+            tolerance=simplify_tolerance, preserve_topology=True
         )
-        fig4.update_layout(
-            showlegend=False,
-            xaxis_title="Classe APCAC",
-            yaxis_title="Porcentagem (%)",
-            height=400,
-            xaxis={'categoryorder': 'total descending'}
+        return gdf
+    except Exception:
+        return None
+
+
+@st.cache_data
+def load_statistics(path_or_url: str | None) -> pd.DataFrame | None:
+    """
+    Reads the stats CSV (sep=";").
+    Returns None on any failure — never raises.
+    """
+    if not path_or_url:
+        return None
+    try:
+        if _is_url(path_or_url):
+            resp = requests.get(path_or_url, timeout=10)
+            resp.raise_for_status()
+            from io import StringIO
+            return pd.read_csv(StringIO(resp.text), sep=";")
+        df = pd.read_csv(_resolve(path_or_url), sep=";")
+        if df is None or df.empty:
+            return None
+        return df
+    except Exception:
+        return None
+
+# ── Map building ───────────────────────────────────────────────────────────────
+
+def _build_popup_html(columns: dict, properties: dict) -> str:
+    """Renders a compact two-column HTML table for a GeoJSON feature popup.
+    Floats are truncated to 2 decimal places; other types rendered as-is.
+    """
+    rows = ""
+    for col, label in columns.items():
+        value = properties.get(col, "—")
+        if isinstance(value, float):
+            value = f"{value:.2f}"
+        elif value is None:
+            value = "—"
+        rows += (
+            f"<tr>"
+            f"<td style='padding:3px 8px 3px 0;font-weight:600;white-space:nowrap'>{label}</td>"
+            f"<td style='padding:3px 0'>{value}</td>"
+            f"</tr>"
         )
-        st.plotly_chart(fig4, use_container_width=True)
+    return f"<table style='font-size:12px;border-collapse:collapse'>{rows}</table>"
+
 
 @st.cache_resource(show_spinner=False)
-def build_map(layer_name: str, style_map: dict, tolerance=0.001):
-    """Cria e cacheia o mapa Folium para uma camada específica"""
-    gdf = load_specific_layer(layer_name)
-    gdf_simplified = simplify_geodataframe(gdf, tolerance)
-    m = create_folium_map(gdf_simplified, style_map)
-    return m._repr_html_()
+def build_map(
+    main_geojson_str: str | None,
+    roi_geojson_str: str | None,
+    style_lookup_json: str,
+    specs_json: str,
+) -> str:
+    """
+    Builds and returns a Folium map as a raw HTML string.
+    Always returns a valid map — falls back to an empty overview if no data.
+    """
+    specs = json.loads(specs_json)
+    style_lookup = json.loads(style_lookup_json)
+    map_opts = specs.get("map_options", {})
+    fill_opacity = map_opts.get("fill_opacity", 0.65)
+    columns = specs.get("columns", {})
+    classes_col = specs.get("classes", "")
+    style_roi = specs.get("style_roi", {})
+    basemaps = specs.get("basemaps", [])
 
-def main():
-    """Função principal do dashboard"""
-
-    # Sidebar com informações e controles
-    st.sidebar.markdown("### ℹ️ Informações do Projeto")
-    st.sidebar.markdown("""
-    Este dashboard apresenta as **Áreas Prioritárias para Conservação de Águas do Cerrado (APCAC)**.
-
-    As áreas são classificadas considerando:
-    - **Predominância**: Natural ou Antrópica
-    - **Importância Hidrológica**: Extremamente Alta, Muito Alta, Alta, Regular
-    - **Nível de Risco de Degradação**: Alto ou Baixo Risco
-    """)
-
-    # Carregar dados
-    available_layers = get_available_layers()
-    style_map = parse_qml_style()
-    df_stats = load_apcac_statistics()
-
-    # Controles na sidebar
-    st.sidebar.markdown("### 🗂️ Configurações")
-
-    # Seleção de camada
-    if available_layers:
-        # Determinar índice padrão (preferir nunivotto3)
-        default_index = 0
-        if 'apcac_nunivotto3' in available_layers:
-            default_index = available_layers.index('apcac_nunivotto3')
-        elif 'apcac_nunivotto4' in available_layers:
-            default_index = available_layers.index('apcac_nunivotto4')
-        elif 'apcac_nunivotto5' in available_layers:
-            default_index = available_layers.index('apcac_nunivotto5')
-
-        # Lista de aliases (para exibir)
-        layer_alias = {
-            "apcac_nunivotto3": "Nível Otto 3 (regional)",
-            "apcac_nunivotto4": "Nível Otto 4 (intermediário)",
-            "apcac_nunivotto5": "Nível Otto 5 (local)"
-        }
-
-        selected_layer = st.sidebar.selectbox(
-            "Selecione uma camada:",
-            available_layers,
-            index=default_index,
-            format_func=lambda x: layer_alias.get(x, x),
-            help="Diferentes resoluções de análise das bacias hidrográficas"
-        )
+    # ── Determine center and zoom ──────────────────────────────────────────────
+    if main_geojson_str:
+        import json as _json
+        gj = _json.loads(main_geojson_str)
+        coords = []
+        for feat in gj.get("features", []):
+            geom = feat.get("geometry", {})
+            geom_type = geom.get("type", "")
+            raw_coords = geom.get("coordinates", [])
+            if geom_type == "Polygon":
+                for ring in raw_coords:
+                    coords.extend(ring)
+            elif geom_type == "MultiPolygon":
+                for poly in raw_coords:
+                    for ring in poly:
+                        coords.extend(ring)
+        if coords:
+            lons = [c[0] for c in coords]
+            lats = [c[1] for c in coords]
+            center = [(min(lats) + max(lats)) / 2, (min(lons) + max(lons)) / 2]
+            bounds = [[min(lats), min(lons)], [max(lats), max(lons)]]
+        else:
+            center = FALLBACK_CENTER
+            bounds = None
     else:
-        st.error("Nenhuma camada APCAC encontrada")
+        center = FALLBACK_CENTER
+        bounds = None
 
-    # Criar legenda
-    create_legend(style_map)
-
-    # Layout principal
-    # Criar e exibir mapa
-    with st.spinner('🗺️ Carregando mapa...'):
-        map_html = build_map(selected_layer, style_map)
-
-    # Exibir mapa
-    st.components.v1.html(
-        map_html,
-        width=1400,
-        height=700,
+    # ── Create base map ────────────────────────────────────────────────────────
+    m = folium.Map(
+        location=center,
+        zoom_start=FALLBACK_ZOOM,
+        tiles=None,
+        prefer_canvas=True,
     )
 
-    # Seção de estatísticas
-    st.markdown("---")
-    st.markdown("### 📈 Estatísticas Detalhadas")
+    # ── Basemap tile layers ────────────────────────────────────────────────────
+    for i, bm in enumerate(basemaps):
+        folium.TileLayer(
+            tiles=bm.get("url", ""),
+            attr=bm.get("attribution", ""),
+            name=bm.get("name", f"Basemap {i+1}"),
+            overlay=False,
+            control=True,
+        ).add_to(m)
 
-    if df_stats is not None:
-        create_statistics_charts(df_stats, style_map)
+    # ── ROI layer (optional, stroke only) ─────────────────────────────────────
+    if roi_geojson_str:
+        roi_color = rgba_to_hex(style_roi.get("color", "50,50,50,255"))
+        roi_weight = style_roi.get("weight", 2)
+
+        folium.GeoJson(
+            roi_geojson_str,
+            name=style_roi.get("name", "ROI"),
+            style_function=lambda _: {
+                "fillOpacity": 0,
+                "color": roi_color,
+                "weight": roi_weight,
+            },
+        ).add_to(m)
+
+    # ── Main classified layer ──────────────────────────────────────────────────
+    if main_geojson_str:
+        # Pre-format float values to 2dp and inject the class name as heading.
+        import json as _json
+        gj = _json.loads(main_geojson_str)
+        for feat in gj.get("features", []):
+            props = feat.get("properties", {})
+            # Inject human-readable class name for use in popup heading
+            code = str(props.get(classes_col, ""))
+            props["__class_name__"] = style_lookup.get(code, {}).get("name", code)
+            for k, v in props.items():
+                if isinstance(v, float):
+                    props[k] = f"{v:.2f}"
+                elif v is None:
+                    props[k] = "—"
+        formatted_geojson = _json.dumps(gj)
+
+        # Build popup HTML per feature via on_each_feature JsCode.
+        # Shows class name as heading, then only the columns defined in specs
+        # (skipping any that are absent from the feature properties).
+        col_map = _json.dumps(columns)  # {field: label, ...}
+        popup_js = folium.utilities.JsCode(f"""
+            function(feature, layer) {{
+                var cols = {col_map};
+                var props = feature.properties;
+                var heading = props.__class_name__ || props["{classes_col}"] || "";
+                var rows = "";
+                for (var field in cols) {{
+                    var val = props[field];
+                    if (val === undefined || val === null) continue;
+                    rows += "<tr>"
+                          + "<td style='padding:3px 8px 3px 0;font-weight:600;white-space:nowrap'>"
+                          + cols[field] + "</td>"
+                          + "<td style='padding:3px 0'>" + val + "</td>"
+                          + "</tr>";
+                }}
+                var html = "<div style='font-size:12px;max-width:320px'>"
+                         + "<div style='font-weight:700;margin-bottom:6px;border-bottom:1px solid #ccc;"
+                         + "padding-bottom:4px;white-space:normal;line-height:1.3'>"
+                         + heading + "</div>"
+                         + "<table style='border-collapse:collapse'>" + rows + "</table>"
+                         + "</div>";
+                layer.bindPopup(html, {{maxWidth: 340}});
+            }}
+        """)
+
+        def style_function(feature, _sl=style_lookup, _col=classes_col, _fo=fill_opacity):
+            class_val = feature["properties"].get(_col, "")
+            return {
+                "fillColor": get_feature_color(_sl, class_val),
+                "fillOpacity": _fo,
+                "color": "none",
+                "weight": 0,
+            }
+
+        folium.GeoJson(
+            formatted_geojson,
+            name="Camada principal",
+            style_function=style_function,
+            on_each_feature=popup_js,
+            smooth_factor=1.0,
+        ).add_to(m)
+
+        if bounds:
+            m.fit_bounds(bounds)
+
     else:
-        st.warning("Estatísticas pré-computadas não disponíveis")
+        # Empty map fallback marker
+        folium.Marker(
+            location=center,
+            popup=folium.Popup("⚠️ Camada principal não encontrada", max_width=250),
+            icon=folium.Icon(color="gray", icon="info-sign"),
+        ).add_to(m)
 
-    # Rodapé com informações adicionais
+    folium.LayerControl().add_to(m)
+
+    return m._repr_html_()
+
+# ── UI renderers ───────────────────────────────────────────────────────────────
+
+def render_sidebar(specs: dict):
+    """Renders the sidebar: title + info.md content."""
+    st.sidebar.markdown(f"### {specs['title_info']}")
+    content = load_asset_text(specs.get("info", ""))
+    if content:
+        st.sidebar.markdown(content)
+    else:
+        st.sidebar.info("ℹ️ Arquivo de informações não encontrado.")
+
+
+def render_intro(specs: dict):
+    """Renders the intro section: title + optional description + legend image."""
+    st.markdown(f"## {specs['title_intro']}")
+    desc = specs.get("desc_intro")
+    if desc:
+        st.markdown(desc)
+    image_path = specs.get("image", "")
+    render_image_with_fallback(image_path, caption=specs.get("image_caption") or None, height=specs.get("image_height") or None)
+
+
+# Warn the user when the serialised GeoJSON exceeds this threshold (MB).
+# Leaflet struggles above ~20 MB of inline GeoJSON in most browsers.
+_GEOJSON_WARN_MB = 20
+
+def render_map(specs: dict, style_lookup: dict):
+    """Renders the map section. Always shows a map; shows info if main layer unavailable."""
+    st.markdown(f"## {specs['title_map']}")
+    desc = specs.get("desc_map")
+    if desc:
+        st.markdown(desc)
+
+    map_opts = specs.get("map_options", {})
+    tolerance = map_opts.get("simplify_tolerance", 0.01)
+
+    # Main layer — try to load; None on any failure
+    main_path = specs.get("map_main")
+    gdf_main = load_geodata(main_path, tolerance)
+    main_geojson_str = gdf_main.to_json() if gdf_main is not None else None
+
+    if main_geojson_str is None:
+        st.info("⚠️ Camada principal não disponível. Exibindo mapa vazio.")
+    else:
+        size_mb = len(main_geojson_str.encode()) / 1_048_576
+        if size_mb > _GEOJSON_WARN_MB:
+            st.warning(
+                f"⚠️ Camada principal ocupa **{size_mb:.0f} MB** após simplificação "
+                f"(tolerância: `{tolerance}`). O mapa pode carregar lentamente ou ficar em branco. "
+                f"Aumente `simplify_tolerance` em `specs.json` para reduzir o tamanho."
+            )
+
+    # ROI layer — fully optional, silent on failure
+    roi_path = specs.get("map_roi")
+    gdf_roi = load_geodata(roi_path, tolerance) if roi_path else None
+    roi_geojson_str = gdf_roi.to_json() if gdf_roi is not None else None
+
+    with st.spinner("🗺️ Carregando mapa..."):
+        map_html = build_map(
+            main_geojson_str=main_geojson_str,
+            roi_geojson_str=roi_geojson_str,
+            style_lookup_json=json.dumps(style_lookup),
+            specs_json=json.dumps({
+                "map_options": specs.get("map_options", {}),
+                "columns": specs.get("columns", {}),
+                "classes": specs.get("classes", ""),
+                "style_roi": specs.get("style_roi", {}),
+                "basemaps": specs.get("basemaps", []),
+            }),
+        )
+
+    st.components.v1.html(map_html, width=None, height=700)
+
+
+def render_statistics(specs: dict, style_lookup: dict):
+    """Renders the statistics section: one horizontal bar chart tab per stats_charts entry."""
+    st.markdown(f"## {specs['title_stats']}")
+    desc = specs.get("desc_stats")
+    if desc:
+        st.markdown(desc)
+
+    stats_path = specs.get("stats")
+    df = load_statistics(stats_path)
+
+    if df is None:
+        st.warning("⚠️ Arquivo de estatísticas não encontrado ou inválido.")
+        return
+
+    classes_col = specs.get("stats_classes_column", specs.get("classes", ""))
+    charts = specs.get("stats_charts", [])
+
+    if not charts:
+        st.info("ℹ️ Nenhum gráfico configurado em `stats_charts`.")
+        return
+
+    if classes_col not in df.columns:
+        st.warning(f"⚠️ Coluna `{classes_col}` não encontrada no CSV de estatísticas.")
+        return
+
+    # Build name and color maps from style_lookup — unknown codes fall back to gray / code itself
+    name_col = "__class_name__"
+    code_to_name = {
+        code: style_lookup.get(code, {}).get("name", code)
+        for code in df[classes_col].astype(str).unique()
+    }
+    color_map = {
+        code_to_name.get(code, code): style_lookup.get(code, {}).get("color", FALLBACK_COLOR)
+        for code in df[classes_col].astype(str).unique()
+    }
+
+    tabs = st.tabs([chart["label"] for chart in charts])
+
+    for tab, chart in zip(tabs, charts):
+        col = chart.get("column")
+        label = chart.get("label", col)
+        x_label = chart.get("x_label", col)
+
+        with tab:
+            if col not in df.columns:
+                st.warning(f"⚠️ Coluna `{col}` não encontrada no CSV.")
+                continue
+
+            df_chart = (
+                df[[classes_col, col]]
+                .dropna(subset=[col])
+                .copy()
+            )
+            df_chart[classes_col] = df_chart[classes_col].astype(str)
+            # Replace class code with full name for display
+            df_chart[name_col] = df_chart[classes_col].map(code_to_name).fillna(df_chart[classes_col])
+            df_chart = df_chart.sort_values(col, ascending=True)  # largest bar at top
+
+            fig = px.bar(
+                df_chart,
+                x=col,
+                y=name_col,
+                orientation="h",
+                color=name_col,
+                color_discrete_map=color_map,
+                title=label,
+            )
+            fig.update_layout(
+                showlegend=False,
+                xaxis_title=x_label,
+                yaxis_title="",
+                height=max(400, len(df_chart) * 30),  # scale height to number of classes
+                margin=dict(l=10, r=10, t=40, b=10),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+# ── Entry point ────────────────────────────────────────────────────────────────
+
+def main():
+    # load_specs must be called before set_page_config
+    specs = load_specs(SPECS_PATH)
+
+    st.set_page_config(
+        page_title=specs["title_page"],
+        page_icon=specs["page_icon"],
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+
+    style_lookup = build_style_lookup(json.dumps(specs["style_classes"]))
+
+    render_sidebar(specs)
+    render_intro(specs)
     st.markdown("---")
-    st.markdown("""
-    ### 📋 Sobre o APCAC
+    render_map(specs, style_lookup)
+    st.markdown("---")
+    render_statistics(specs, style_lookup)
 
-    O sistema APCAC (Áreas Prioritárias para Conservação de Águas do Cerrado) foi desenvolvido para identificar
-    e priorizar áreas críticas para a conservação dos recursos hídricos no bioma Cerrado.
-
-    **Fonte dos dados:** Projeto de pesquisa sobre conservação de águas do Cerrado
-    """)
 
 if __name__ == "__main__":
     main()
